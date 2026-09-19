@@ -1,0 +1,35 @@
+{
+	"schemaVersion": 1,
+	"id": "chillioil",
+	"version": "${version}",
+	"name": "ChilliOil",
+	"description": "ChilliOil mod for Minecraft 1.21.11 Fabric.",
+	"authors": [
+		"NavySaw23"
+	],
+	"contact": {},
+	"license": "CC0-1.0",
+	"icon": "assets/chillioil/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"net.chillioil.ChilliOil"
+		],
+		"client": [
+			"net.chillioil.client.ChilliOilClient"
+		]
+	},
+	"mixins": [
+		"chillioil.mixins.json",
+		{
+			"config": "chillioil.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.18.4",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

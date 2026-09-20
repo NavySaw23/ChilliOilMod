@@ -162,4 +162,10 @@ public class ArmorConfig {
             ALLOWED_ITEMS.add(Identifier.withDefaultNamespace(color + "_harness"));
         }
     }
+
+    public static synchronized void resetDefaults() {
+        loadDefaults();
+        save();
+    }
 }
+

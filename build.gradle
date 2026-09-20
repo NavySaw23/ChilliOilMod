@@ -83,8 +83,40 @@ tasks.register('copyJarToBuilds', Copy) {
 	}
 }
 
+// Automatically deploy the built jar to the Modrinth test profile mods directory, replacing older versions
+tasks.register('copyToTestProfile') {
+	group = 'build'
+	description = 'Copies the remapped mod jar to the Modrinth test profile mods folder.'
+	dependsOn 'remapJar'
+
+	doLast {
+		def targetDir = file('D:/game/MC/Modrinth/profiles/Testmod/mods')
+		if (!targetDir.exists()) {
+			targetDir.mkdirs()
+		}
+
+		try {
+			// Delete any existing ChilliOil versions in the target mods directory
+			targetDir.listFiles().each { File f ->
+				if (f.name.startsWith(project.archives_base_name) && f.name.endsWith('.jar')) {
+					f.delete()
+				}
+			}
+
+			// Copy new remapped jar
+			def sourceJar = tasks.named('remapJar').get().archiveFile.get().asFile
+			def destName = "${project.archives_base_name}-${project.mod_version}-mc${project.minecraft_version}.jar"
+			def destFile = new File(targetDir, destName)
+			java.nio.file.Files.copy(sourceJar.toPath(), destFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			println "Deployed ${destName} to ${targetDir.absolutePath}"
+		} catch (Exception e) {
+			println "Warning: Could not replace jar in ${targetDir.absolutePath} (Minecraft is likely currently running): ${e.message}"
+		}
+	}
+}
+
 tasks.named('build') {
-	finalizedBy('copyJarToBuilds')
+	finalizedBy('copyJarToBuilds', 'copyToTestProfile')
 }
 
 publishing {

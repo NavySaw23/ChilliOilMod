@@ -64,7 +64,21 @@ public class ArmorCommand {
                     )
                     .executes(ArmorCommand::executeUnhideMainHand)
                 )
+                // /armor code <0|1>x4 (e.g. 0101)
+                .then(Commands.literal("code")
+                    .then(Commands.argument("code", com.mojang.brigadier.arguments.StringArgumentType.word())
+                        .executes(ArmorCommand::executeCode)
+                    )
+                )
         );
+    }
+
+    private static boolean isArmorEnabled(CommandSourceStack source) {
+        if (!net.chillioil.management.ModuleConfig.isModuleEnabled("armor")) {
+            source.sendFailure(Component.literal("The 'armor' module is currently disabled.").withStyle(ChatFormatting.RED));
+            return false;
+        }
+        return true;
     }
 
     private static int executeList(CommandContext<CommandSourceStack> context) {
@@ -126,6 +140,7 @@ public class ArmorCommand {
 
     private static int executeHideMainHand(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
+        if (!isArmorEnabled(source)) return 0;
         ServerPlayer player;
         try {
             player = source.getPlayerOrException();
@@ -167,6 +182,7 @@ public class ArmorCommand {
 
     private static int executeUnhideMainHand(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
+        if (!isArmorEnabled(source)) return 0;
         ServerPlayer player;
         try {
             player = source.getPlayerOrException();
@@ -197,6 +213,7 @@ public class ArmorCommand {
 
     private static int executeHideAll(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
+        if (!isArmorEnabled(source)) return 0;
         ServerPlayer player;
         try {
             player = source.getPlayerOrException();
@@ -232,6 +249,8 @@ public class ArmorCommand {
 
     private static int executeUnhideAll(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
+        if (!isArmorEnabled(source)) return 0;
+
         ServerPlayer player;
         try {
             player = source.getPlayerOrException();
@@ -258,5 +277,88 @@ public class ArmorCommand {
             source.sendFailure(Component.literal("No hidden equipped items were found.").withStyle(ChatFormatting.YELLOW));
             return 0;
         }
+    }
+
+    private static final EquipmentSlot[] ARMOR_PIECES_TOP_TO_BOTTOM = {
+        EquipmentSlot.HEAD,
+        EquipmentSlot.CHEST,
+        EquipmentSlot.LEGS,
+        EquipmentSlot.FEET
+    };
+
+    private static final String[] ARMOR_PIECE_NAMES = {
+        "Helmet",
+        "Chestplate",
+        "Leggings",
+        "Boots"
+    };
+
+    private static int executeCode(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        if (!isArmorEnabled(source)) return 0;
+
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("This command can only be executed by a player.").withStyle(ChatFormatting.RED));
+            return 0;
+        }
+
+        String code = com.mojang.brigadier.arguments.StringArgumentType.getString(context, "code").trim();
+        if (code.length() != 4 || !code.matches("[01]{4}")) {
+            source.sendFailure(Component.literal("Invalid code! Please provide a 4-digit binary code (e.g. /armor code 0101).")
+                .withStyle(ChatFormatting.RED)
+                .append(Component.literal("\n0 = Hidden, 1 = Visible (Slots: Helmet, Chestplate, Leggings, Boots)")
+                    .withStyle(ChatFormatting.GRAY)));
+            return 0;
+        }
+
+        int changedCount = 0;
+        StringBuilder statusReport = new StringBuilder();
+
+        for (int i = 0; i < 4; i++) {
+            char bit = code.charAt(i);
+            EquipmentSlot slot = ARMOR_PIECES_TOP_TO_BOTTOM[i];
+            String slotName = ARMOR_PIECE_NAMES[i];
+            ItemStack stack = player.getItemBySlot(slot);
+
+            if (stack.isEmpty()) {
+                continue;
+            }
+
+            Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            if (!ArmorConfig.contains(id) || !ArmorTagHelper.canBeHidden(stack)) {
+                continue;
+            }
+
+            boolean shouldBeInvisible = (bit == '0');
+            boolean isCurrentlyInvisible = ArmorTagHelper.isInvisible(stack);
+
+            if (shouldBeInvisible != isCurrentlyInvisible) {
+                ArmorTagHelper.setInvisible(stack, shouldBeInvisible);
+                changedCount++;
+            }
+
+            if (statusReport.length() > 0) {
+                statusReport.append(", ");
+            }
+            statusReport.append(slotName).append(": ").append(shouldBeInvisible ? "Hidden" : "Visible");
+        }
+
+        ArmorTagHelper.resendEquipment(player);
+
+        if (statusReport.length() == 0) {
+            source.sendFailure(Component.literal("No compatible armor pieces are currently equipped in armor slots.")
+                .withStyle(ChatFormatting.YELLOW));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Applied armor code [")
+            .withStyle(ChatFormatting.GREEN)
+            .append(Component.literal(code).withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD))
+            .append(Component.literal("] -> " + statusReport).withStyle(ChatFormatting.GREEN)), false);
+
+        return 1;
     }
 }

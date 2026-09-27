@@ -159,36 +159,53 @@ public class SkinApplier {
         }
     }
 
+    private static final java.util.Queue<Runnable> PENDING_TICK_TASKS = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    static {
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+            int count = PENDING_TICK_TASKS.size();
+            for (int i = 0; i < count; i++) {
+                Runnable task = PENDING_TICK_TASKS.poll();
+                if (task != null) {
+                    try {
+                        task.run();
+                    } catch (Exception e) {
+                        LOGGER.error("Error executing pending tick task in SkinApplier", e);
+                    }
+                }
+            }
+        });
+    }
+
     private static void refreshTrackingForViewers(ServerPlayer player, ServerLevel level) {
         try {
             ChunkMap chunkMap = level.getChunkSource().chunkMap;
-            // Access entityMap in chunkMap using reflection to find TrackedEntity for player
-            Field entityMapField = null;
-            for (Field f : ChunkMap.class.getDeclaredFields()) {
-                if (f.getType().getSimpleName().contains("Int2ObjectMap")) {
-                    entityMapField = f;
-                    break;
+            it.unimi.dsi.fastutil.ints.Int2ObjectMap<?> entityMap = ((net.chillioil.mixin.ChunkMapAccessor) chunkMap).getEntityMap();
+            Object trackedEntity = entityMap != null ? entityMap.get(player.getId()) : null;
+            if (trackedEntity instanceof net.chillioil.mixin.TrackedEntityInvoker invoker) {
+                // Untrack player for all other players so their clients receive ClientboundRemoveEntitiesPacket
+                for (ServerPlayer viewer : level.players()) {
+                    if (viewer != player) {
+                        invoker.callRemovePlayer(viewer);
+                    }
                 }
-            }
 
-            if (entityMapField != null) {
-                entityMapField.setAccessible(true);
-                Object entityMap = entityMapField.get(chunkMap);
-                Method getMethod = entityMap.getClass().getMethod("get", int.class);
-                Object trackedEntity = getMethod.invoke(entityMap, player.getId());
-                if (trackedEntity != null) {
-                    // TrackedEntity methods: broadcastRemoved() and updatePlayers()
-                    Method broadcastRemovedMethod = trackedEntity.getClass().getDeclaredMethod("broadcastRemoved");
-                    broadcastRemovedMethod.setAccessible(true);
-                    broadcastRemovedMethod.invoke(trackedEntity);
-
-                    Method updatePlayersMethod = trackedEntity.getClass().getDeclaredMethod("updatePlayers", List.class);
-                    updatePlayersMethod.setAccessible(true);
-                    updatePlayersMethod.invoke(trackedEntity, level.players());
-                }
+                // Wait until the next server tick before re-tracking so viewers have processed
+                // the PlayerInfo packet and entity removal before receiving the ClientboundAddEntityPacket
+                PENDING_TICK_TASKS.add(() -> {
+                    try {
+                        for (ServerPlayer viewer : level.players()) {
+                            if (viewer != player) {
+                                invoker.callUpdatePlayer(viewer);
+                            }
+                        }
+                    } catch (Exception ex) {
+                        LOGGER.error("Could not re-track entity for viewers of {}", player.getPlainTextName(), ex);
+                    }
+                });
             }
         } catch (Exception e) {
-            LOGGER.debug("Could not refresh chunk tracked entity directly for {}", player.getPlainTextName(), e);
+            LOGGER.error("Could not refresh chunk tracked entity for viewers of {}", player.getPlainTextName(), e);
         }
     }
 }

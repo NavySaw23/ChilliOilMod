@@ -79,7 +79,7 @@ tasks.register('copyJarToBuilds', Copy) {
 	from tasks.named('remapJar')
 	into layout.projectDirectory.dir('builds')
 	rename { String fileName ->
-		"${project.archives_base_name}-${project.mod_version}-mc${project.minecraft_version}.jar"
+		"${project.mod_version}-${project.minecraft_version}.jar"
 	}
 }
 

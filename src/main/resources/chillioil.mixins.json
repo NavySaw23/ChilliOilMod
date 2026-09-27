@@ -3,7 +3,9 @@
 	"package": "net.chillioil.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"PlayerListMixin"
+		"PlayerListMixin",
+		"ChunkMapAccessor",
+		"TrackedEntityInvoker"
 	],
 	"injectors": {
 		"defaultRequire": 1
